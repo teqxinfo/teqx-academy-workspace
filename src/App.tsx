@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
 import { getSession, signOut, store } from './lib/sb';
-import { loadFounders, myFounder, myMentor, initials, Founder, Mentor } from './lib/data';
+import { loadFounders, myFounder, myMentor, myAdmin, initials, Founder, Mentor, AdminUser } from './lib/data';
 import { MentorShell } from './mentor/MentorShell';
+import { AdminShell } from './admin/AdminShell';
 import { Login } from './views/Login';
 import logoUrl from './assets/logo.png';
 import { Dashboard } from './views/Dashboard';
@@ -83,6 +84,7 @@ export function App() {
     const [state, setState] = useState<'loading' | 'login' | 'ready' | 'unlinked'>('loading');
     const [me, setMe] = useState<Founder | null>(null);
     const [mentor, setMentor] = useState<Mentor | null>(null);
+    const [admin, setAdmin] = useState<AdminUser | null>(null);
     const [founders, setFounders] = useState<Founder[]>([]);
     const [dark, setDark] = useState(() => store.get('teqx_theme') !== 'light');
 
@@ -92,10 +94,12 @@ export function App() {
         const f = await loadFounders();
         setFounders(f);
         const m = await myFounder();
-        if (m) { setMe(m); setMentor(null); setState('ready'); return; }
+        if (m) { setMe(m); setMentor(null); setAdmin(null); setState('ready'); return; }
         const mt = await myMentor();
-        if (mt && mt.is_active) { setMentor(mt); setMe(null); setState('ready'); return; }
-        setMe(null); setMentor(null); setState('unlinked');
+        if (mt && mt.is_active) { setMentor(mt); setMe(null); setAdmin(null); setState('ready'); return; }
+        const ad = await myAdmin();
+        if (ad) { setAdmin(ad); setMe(null); setMentor(null); setState('ready'); return; }
+        setMe(null); setMentor(null); setAdmin(null); setState('unlinked');
     };
 
     useEffect(() => {
@@ -113,5 +117,6 @@ export function App() {
         <button className="btn ghost" style={{ marginTop: 16 }} onClick={async () => { await signOut(); location.reload(); }}>Sign out</button>
     </div></div>;
     if (mentor) return <MentorShell me={mentor} founders={founders} refresh={refresh} dark={dark} toggleTheme={() => setDark(!dark)} />;
+    if (admin) return <AdminShell me={admin} dark={dark} toggleTheme={() => setDark(!dark)} />;
     return <Shell me={me} founders={founders} refresh={refresh} dark={dark} toggleTheme={() => setDark(!dark)} />;
 }

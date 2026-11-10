@@ -26,6 +26,15 @@ export async function myFounder(): Promise<Founder | null> {
     return rows[0] || null;
 }
 
+export type AdminUser = { id: string; auth_user_id: string; email: string | null; full_name: string };
+
+export async function myAdmin(): Promise<AdminUser | null> {
+    const s = getSession();
+    if (!s?.user?.id) return null;
+    const rows = await dbSelect<AdminUser>('admin_users', { eq: { auth_user_id: s.user.id }, limit: 1 });
+    return rows[0] || null;
+}
+
 export async function logActivity(founderId: string | undefined, entityType: string, entityId: string | undefined, action: string, summary: string, meta: any = {}) {
     try { await dbInsert('activity_log', { actor_id: founderId || null, entity_type: entityType, entity_id: entityId || null, action, summary, meta }); } catch {}
 }

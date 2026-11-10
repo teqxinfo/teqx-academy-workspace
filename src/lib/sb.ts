@@ -128,6 +128,31 @@ export async function dbUpsert<T = any>(table: string, row: any, onConflict: str
     return Array.isArray(j) ? j[0] : j;
 }
 
+// Call a Postgres RPC without requiring a session (e.g. resolve_username on the login page).
+export async function rpcPublic(name: string, args: any): Promise<any> {
+    const r = await fetch(`${URL}/rest/v1/rpc/${name}`, {
+        method: 'POST',
+        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((j && (j.message || j.hint)) || `Request failed ${r.status}`);
+    return j;
+}
+
+// Call a Postgres RPC as the signed-in user (authorization enforced inside the function).
+export async function rpcCall(name: string, args: any): Promise<any> {
+    const t = await token();
+    const r = await fetch(`${URL}/rest/v1/rpc/${name}`, {
+        method: 'POST',
+        headers: { apikey: ANON, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((j && (j.message || j.hint)) || `Request failed ${r.status}`);
+    return j;
+}
+
 export async function uploadDoc(file: File, path: string): Promise<void> {
     const t = await token();
     const r = await fetch(`${URL}/storage/v1/object/documents/${path}`, {
