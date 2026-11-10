@@ -3,7 +3,6 @@ import { useApp } from '../App';
 import { repo, logActivity, fmtDate, label } from '../lib/data';
 import { uploadDoc, docSignedUrl, dbSelect, dbInsert, dbDelete } from '../lib/sb';
 
-import { MentorCommentsBlock, MentorReviewBlock } from './MentorComments';
 const CATS = ['business', 'legal', 'branding', 'finance', 'academic', 'courses', 'marketing'];
 const empty = { title: '', category: 'business', description: '', access: 'shared', status: 'draft', responsible_founder: '', acl: [] as string[] };
 
@@ -115,8 +114,6 @@ export function Documents() {
                 <div className="chips">{founders.map(f => <button key={f.id} className={`chip${form.acl.includes(f.id) ? ' on' : ''}`}
                     onClick={() => setForm({ ...form, acl: form.acl.includes(f.id) ? form.acl.filter((x: string) => x !== f.id) : [...form.acl, f.id] })}>{f.full_name}</button>)}</div>
             </>}
-            {form.id && <MentorReviewBlock docId={form.id} />}
-            {form.id && <MentorCommentsBlock entityType="document" entityId={form.id} />}
             <label>File {form.file_name && !file ? `(current: ${form.file_name})` : ''}</label>
             <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] || null)} />
             <div className="row" style={{ marginTop: 18, justifyContent: 'flex-end' }}>

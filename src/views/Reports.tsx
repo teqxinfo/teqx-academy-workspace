@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../App';
 import { repo, logActivity, fmtDate } from '../lib/data';
-import { MentorCommentsBlock } from './MentorComments';
 
 function monday(d: Date): string {
     const x = new Date(d); const day = (x.getDay() + 6) % 7;
@@ -148,7 +147,6 @@ export function Reports() {
                 </div>) : <div className="mut small">No reviews yet.</div>}
             </div>
             <div className="row"><input value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a review comment..." onKeyDown={e => e.key === 'Enter' && addComment()} /><button className="btn sm" disabled={busy || !comment.trim()} onClick={addComment}>Add</button></div>
-            <MentorCommentsBlock entityType="report" entityId={view.id} />
             <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}><button className="btn ghost" onClick={() => setView(null)}>Close</button></div>
         </div></div>}
     </>;

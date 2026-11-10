@@ -6,18 +6,6 @@ export async function loadFounders(): Promise<Founder[]> {
     return dbSelect<Founder>('founders', { order: 'founder_code' });
 }
 
-export type Mentor = { id: string; mentor_code: string; full_name: string; designation: string | null; specialization: string | null; email: string | null; phone: string | null; bio: string | null; notif_prefs: any; auth_user_id: string | null; is_active: boolean };
-
-export async function myMentor(): Promise<Mentor | null> {
-    const s = getSession();
-    if (!s?.user?.id) return null;
-    const rows = await dbSelect<Mentor>('mentors', { eq: { auth_user_id: s.user.id }, is: { deleted_at: 'null' }, limit: 1 });
-    return rows[0] || null;
-}
-
-export async function logMentorActivity(mentorId: string | undefined, action: string, entityType: string, entityId: string | undefined, summary: string) {
-    try { await dbInsert('mentor_activity_log', { mentor_id: mentorId || null, action, entity_type: entityType, entity_id: entityId || null, summary }); } catch {}
-}
 
 export async function myFounder(): Promise<Founder | null> {
     const s = getSession();
@@ -216,78 +204,6 @@ export const repo = {
             for (const r of rows) await dbUpdate('notifications', r.id, { read: true });
         },
         remove: (id: string) => dbDelete('notifications', id),
-    },
-    mComments: {
-        list: (entityType: string, entityId: string) => dbSelect('mentor_comments', { eq: { entity_type: entityType, entity_id: entityId }, order: 'created_at.asc' }),
-        add: (r: any) => dbInsert('mentor_comments', r),
-        remove: (id: string) => dbDelete('mentor_comments', id),
-    },
-    mReviews: {
-        list: (entityType?: string, entityId?: string) => {
-            const eq: Record<string, any> = {};
-            if (entityType) eq.entity_type = entityType;
-            if (entityId) eq.entity_id = entityId;
-            return dbSelect('mentor_reviews', Object.keys(eq).length ? { eq, order: 'created_at.desc' } : { order: 'created_at.desc' });
-        },
-        upsert: async (r: any) => {
-            const code = r.review_code || await nextCode('mentor_reviews', 'review_code', 'MRV');
-            return dbUpsert('mentor_reviews', { ...r, review_code: code, updated_at: new Date().toISOString() }, 'mentor_id,entity_type,entity_id');
-        },
-        remove: (id: string) => dbDelete('mentor_reviews', id),
-    },
-    recommendations: {
-        list: () => dbSelect('recommendations', { is: { deleted_at: 'null' }, order: 'created_at.desc' }),
-        create: async (r: any) => dbInsert('recommendations', { ...r, rec_code: await nextCode('recommendations', 'rec_code', 'REC') }),
-        update: (id: string, p: any) => dbUpdate('recommendations', id, p),
-        remove: (id: string) => dbUpdate('recommendations', id, { deleted_at: new Date().toISOString() }),
-    },
-    recResponses: {
-        list: (recId: string) => dbSelect('recommendation_responses', { eq: { recommendation_id: recId }, order: 'created_at.asc' }),
-        add: (r: any) => dbInsert('recommendation_responses', r),
-    },
-    milestones: {
-        list: () => dbSelect('milestones', { order: 'milestone_order' }),
-        update: (id: string, p: any) => dbUpdate('milestones', id, p),
-    },
-    mUpdates: {
-        list: (milestoneId: string) => dbSelect('milestone_updates', { eq: { milestone_id: milestoneId }, order: 'created_at.desc' }),
-        add: (r: any) => dbInsert('milestone_updates', r),
-    },
-    mMeetings: {
-        list: () => dbSelect('mentoring_meetings', { is: { deleted_at: 'null' }, order: 'scheduled_at.desc' }),
-        create: async (r: any) => dbInsert('mentoring_meetings', { ...r, meeting_code: await nextCode('mentoring_meetings', 'meeting_code', 'MMG') }),
-        update: (id: string, p: any) => dbUpdate('mentoring_meetings', id, p),
-        remove: (id: string) => dbUpdate('mentoring_meetings', id, { deleted_at: new Date().toISOString() }),
-    },
-    mNotes: {
-        list: (meetingId: string) => dbSelect('mentoring_meeting_notes', { eq: { meeting_id: meetingId }, order: 'created_at.asc' }),
-        add: (r: any) => dbInsert('mentoring_meeting_notes', r),
-        update: (id: string, p: any) => dbUpdate('mentoring_meeting_notes', id, p),
-        remove: (id: string) => dbDelete('mentoring_meeting_notes', id),
-    },
-    aProgress: {
-        list: (group: string) => dbSelect('academy_progress', { eq: { area_group: group }, order: 'area_order' }),
-        update: (id: string, p: any) => dbUpdate('academy_progress', id, p),
-    },
-    mNotifications: {
-        list: () => dbSelect('mentor_notifications', { order: 'created_at.desc', limit: 100 }),
-        markRead: (id: string) => dbUpdate('mentor_notifications', id, { read: true }),
-        markAllRead: async () => {
-            const rows: any[] = await dbSelect('mentor_notifications', { eq: { read: 'false' }, select: 'id', limit: 200 });
-            for (const r of rows) await dbUpdate('mentor_notifications', r.id, { read: true });
-        },
-        remove: (id: string) => dbDelete('mentor_notifications', id),
-    },
-    mPermissions: {
-        listMine: () => dbSelect('mentor_permissions', {}),
-        can: async (module: string) => {
-            const rows: any[] = await dbSelect('mentor_permissions', { eq: { module } });
-            return !!rows[0]?.allowed;
-        },
-    },
-    mentorsAdmin: {
-        list: () => dbSelect('mentors', { is: { deleted_at: 'null' } }),
-        update: (id: string, p: any) => dbUpdate('mentors', id, p),
     },
     activity: {
         list: (limit = 12) => dbSelect('activity_log', { order: 'created_at.desc', limit }),

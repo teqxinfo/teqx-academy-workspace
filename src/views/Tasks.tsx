@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../App';
 import { repo, logActivity, fmtDate, label } from '../lib/data';
-import { MentorCommentsBlock } from './MentorComments';
 
 const STATUSES = ['backlog', 'to_do', 'in_progress', 'under_review', 'completed', 'on_hold'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
@@ -207,7 +206,6 @@ export function Tasks() {
                 </div>) : <div className="mut">No updates yet.</div>}
             </div>
             <div className="row"><input value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note..." onKeyDown={e => e.key === 'Enter' && addNote()} /><button className="btn sm" onClick={addNote}>Add</button></div>
-            <MentorCommentsBlock entityType="task" entityId={detail.id} />
             <div className="row" style={{ marginTop: 16, justifyContent: 'space-between' }}>
                 <button className="btn danger sm" onClick={() => remove(detail)}>Delete task</button>
                 <button className="btn ghost" onClick={() => setDetail(null)}>Close</button>

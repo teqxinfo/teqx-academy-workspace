@@ -15,15 +15,12 @@ export type Entity = {
 
 const F = (k: string, label: string, type: FieldType = 'text', extra: Partial<Field> = {}): Field => ({ k, label, type, ...extra });
 const FOUNDER_FK = { table: 'founders', label: 'full_name' };
-const MENTOR_FK = { table: 'mentors', label: 'full_name' };
 
 export const ENTITIES: Entity[] = [
     // People
     { key: 'founders', table: 'founders', label: 'Founders', group: 'People', order: 'founder_code',
       protectDelete: (r) => r.founder_code === 'FDR-001' ? 'Owner founder record is protected and cannot be deleted.' : null,
       fields: [F('founder_code', 'Code', 'text', { required: true }), F('full_name', 'Full name', 'text', { required: true }), F('role_title', 'Role title', 'text', { required: true }), F('department', 'Department', 'text', { required: true }), F('email', 'Email'), F('auth_user_id', 'Auth user ID', 'text', { hint: 'UUID of the linked login (Supabase auth user). Set by the secure provisioning flow.' }), F('is_active', 'Active', 'bool')] },
-    { key: 'mentors', table: 'mentors', label: 'Mentors', group: 'People', order: 'mentor_code', softDelete: true,
-      fields: [F('mentor_code', 'Code', 'text', { required: true }), F('full_name', 'Full name', 'text', { required: true }), F('designation', 'Designation'), F('specialization', 'Specialization'), F('email', 'Email'), F('phone', 'Phone'), F('bio', 'Bio', 'textarea', { hideInTable: true }), F('auth_user_id', 'Auth user ID'), F('is_active', 'Active', 'bool')] },
     { key: 'admin_users', table: 'admin_users', label: 'Admin Users', group: 'People', order: 'created_at',
       protectDelete: (r) => r.auth_user_id === getSession()?.user?.id ? 'You cannot delete your own admin account while signed in.' : null,
       fields: [F('email', 'Email', 'text', { readonly: true }), F('full_name', 'Full name', 'text', { required: true }), F('auth_user_id', 'Auth user ID', 'text', { readonly: true, hint: 'New admin logins are created through the secure provisioning flow, not here.' })] },
@@ -70,23 +67,12 @@ export const ENTITIES: Entity[] = [
       fields: [F('outstanding_code', 'Code', 'text', { required: true }), F('payer', 'Payer', 'text', { required: true }), F('amount_due', 'Amount due', 'number', { required: true }), F('due_date', 'Due date', 'date'), F('status', 'Status', 'select', { options: ['pending', 'partial', 'paid'] }), F('description', 'Description', 'textarea', { hideInTable: true })] },
     { key: 'founder_contributions', table: 'founder_contributions', label: 'Founder Contributions', group: 'Finance', order: 'contribution_code', softDelete: true,
       fields: [F('contribution_code', 'Code', 'text', { required: true }), F('founder_id', 'Founder', 'fk', { fk: FOUNDER_FK, required: true }), F('contribution_date', 'Date', 'date', { required: true }), F('amount', 'Amount', 'number', { required: true }), F('contribution_type', 'Type', 'select', { options: ['capital', 'loan', 'expense_cover', 'other'] }), F('reference', 'Reference'), F('remarks', 'Remarks', 'textarea', { hideInTable: true })] },
-    // Mentor data
-    { key: 'recommendations', table: 'recommendations', label: 'Recommendations', group: 'Mentor Data', order: 'rec_code', softDelete: true,
-      fields: [F('rec_code', 'Code', 'text', { required: true }), F('title', 'Title', 'text', { required: true }), F('priority', 'Priority', 'select', { options: ['low', 'medium', 'high', 'urgent'] }), F('status', 'Status', 'select', { options: ['suggested', 'under_discussion', 'accepted', 'in_progress', 'implemented', 'rejected'] }), F('department', 'Department'), F('suggested_by', 'Suggested by (mentor)', 'fk', { fk: MENTOR_FK }), F('assigned_founder', 'Assigned founder', 'fk', { fk: FOUNDER_FK }), F('description', 'Description', 'textarea', { hideInTable: true }), F('founder_response', 'Founder response', 'textarea', { hideInTable: true })] },
-    { key: 'mentor_comments', table: 'mentor_comments', label: 'Mentor Comments', group: 'Mentor Data', order: 'created_at.desc',
-      fields: [F('mentor_id', 'Mentor', 'fk', { fk: MENTOR_FK, required: true }), F('entity_type', 'Entity type', 'select', { options: ['task', 'report', 'document', 'milestone', 'course', 'general'] }), F('entity_id', 'Entity ID', 'text', { required: true }), F('body', 'Comment', 'textarea', { required: true }), F('created_at', 'Created', 'datetime', { readonly: true })] },
-    { key: 'mentor_reviews', table: 'mentor_reviews', label: 'Doc Reviews', group: 'Mentor Data', order: 'review_code',
-      fields: [F('review_code', 'Code', 'text', { required: true }), F('mentor_id', 'Mentor', 'fk', { fk: MENTOR_FK, required: true }), F('entity_type', 'Entity type', 'select', { options: ['document', 'course', 'business_area'] }), F('entity_id', 'Entity ID', 'text', { required: true }), F('status', 'Status', 'select', { options: ['pending_review', 'under_review', 'feedback_provided', 'revision_requested', 'reviewed'] }), F('comments', 'Comments', 'textarea', { hideInTable: true }), F('suggestions', 'Suggestions', 'textarea', { hideInTable: true }), F('issues', 'Issues', 'textarea', { hideInTable: true })] },
-    { key: 'milestones', table: 'milestones', label: 'Milestones', group: 'Mentor Data', order: 'milestone_order',
-      fields: [F('milestone_code', 'Code', 'text', { required: true }), F('name', 'Name', 'text', { required: true }), F('status', 'Status', 'select', { options: ['not_started', 'in_progress', 'completed', 'delayed', 'on_hold'] }), F('progress_pct', 'Progress %', 'number'), F('milestone_order', 'Order', 'number'), F('responsible_founder', 'Responsible founder', 'fk', { fk: FOUNDER_FK }), F('start_date', 'Start date', 'date'), F('target_date', 'Target date', 'date'), F('description', 'Description', 'textarea', { hideInTable: true })] },
-    { key: 'academy_progress', table: 'academy_progress', label: 'Academy Progress', group: 'Mentor Data', order: 'area_order',
-      fields: [F('area_key', 'Area key', 'text', { required: true }), F('area_group', 'Group', 'select', { options: ['dashboard', 'business'] }), F('label', 'Label', 'text', { required: true }), F('pct', 'Progress %', 'number'), F('area_order', 'Order', 'number'), F('mentor_note', 'Mentor note', 'textarea', { hideInTable: true }), F('founder_note', 'Founder note', 'textarea', { hideInTable: true })] },
     // System
     { key: 'notifications', table: 'notifications', label: 'Notifications', group: 'System', order: 'created_at.desc',
       fields: [F('founder_id', 'Recipient', 'fk', { fk: FOUNDER_FK, required: true }), F('type', 'Type', 'text', { required: true }), F('title', 'Title', 'text', { required: true }), F('body', 'Body', 'textarea', { hideInTable: true }), F('link', 'Link'), F('read', 'Read', 'bool'), F('created_at', 'Created', 'datetime', { readonly: true })] },
 ];
 
-const FK_TABLES = ['founders', 'mentors', 'courses'];
+const FK_TABLES = ['founders', 'courses'];
 
 function fmt(v: any, f: Field, fkMaps: Record<string, Record<string, string>>): string {
     if (v === null || v === undefined) return '';
@@ -259,7 +245,7 @@ export function AdminHome() {
             <h3>Safety rails</h3>
             <p className="mut" style={{ marginTop: 8, lineHeight: 1.7 }}>
                 The owner founder record (FDR-001, Afvan) and your own admin account are protected from deletion, and the last remaining admin account can never be removed - enforced in the database, not just the UI.
-                New login accounts (founders, mentors, extra admins) are created through the secure provisioning flow, never with passwords in chat.
+                New login accounts (founders, extra admins) are created in User Accounts, never with passwords in chat.
             </p>
         </div>
     </div>;

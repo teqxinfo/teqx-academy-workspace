@@ -787,370 +787,11 @@ create policy rcomments_delete on report_comments for delete to authenticated us
 
 -- ============================================================
 -- migration-09: Business Mentor Portal (applied Nov 8, 2026)
+-- REMOVED Nov 10, 2026 (user request) by migration-12 below.
+-- The mentor sector (portal, tables, policies, functions) no longer exists.
+-- Backup of schema + data: Drive file "teqx-mentor-sector-backup-2026-11-10.txt".
 -- ============================================================
--- Mentor Portal CHUNK M1: Business Mentor role foundations (spec sections 2, 18, 19)
--- Mentor is a separate role: read access to shared records, write access only to mentor-owned tables.
--- Mentor account management (create/disable) is done by founders (no separate super-admin exists; flagged to parent).
 
-create table mentors (
-  id uuid primary key default gen_random_uuid(),
-  mentor_code text unique not null,
-  full_name text not null,
-  designation text,
-  specialization text,
-  email citext unique,
-  phone text,
-  bio text,
-  notif_prefs jsonb not null default '{}',
-  auth_user_id uuid unique,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz
-);
-
-create table mentor_permissions (
-  id uuid primary key default gen_random_uuid(),
-  mentor_id uuid not null references mentors(id) on delete cascade,
-  module text not null,
-  allowed boolean not null default true,
-  unique(mentor_id, module)
-);
-
-create or replace function is_mentor() returns boolean language sql security definer stable set search_path = public as $$
-  select exists(select 1 from mentors where auth_user_id = auth.uid() and is_active);
-$$;
-create or replace function my_mentor_id() returns uuid language sql security definer stable set search_path = public as $$
-  select id from mentors where auth_user_id = auth.uid();
-$$;
-create or replace function mentor_can(p_module text) returns boolean language sql security definer stable set search_path = public as $$
-  select coalesce((select allowed from mentor_permissions where mentor_id = my_mentor_id() and module = p_module), false);
-$$;
-
-alter table mentors enable row level security;
-alter table mentor_permissions enable row level security;
-create policy mentors_read on mentors for select to authenticated using (is_founder() or id = my_mentor_id());
-create policy mentors_update_self on mentors for update to authenticated using (id = my_mentor_id() or is_founder()) with check (id = my_mentor_id() or is_founder());
-create policy mentors_insert on mentors for insert to authenticated with check (is_founder());
-create policy mentors_delete on mentors for delete to authenticated using (is_founder());
-create policy mperms_founders on mentor_permissions for all to authenticated using (is_founder()) with check (is_founder());
-create policy mperms_read_own on mentor_permissions for select to authenticated using (mentor_id = my_mentor_id());
-
--- Mentor read access to existing shared tables (advisor visibility, spec section 18)
-do $$ declare t text; begin
-  foreach t in array array['founders','tasks','task_updates','study_items','documents','document_acl','courses','course_modules','weekly_reports','decisions','market_research','competitors','brand_assets','content_calendar','campaigns','leads','lead_followups','meetings','meeting_action_items','decision_acknowledgements','knowledge_items','knowledge_comments','knowledge_sessions','report_comments','activity_log','app_settings']
-  loop execute format('create policy mentor_read_%I on %I for select to authenticated using (is_mentor())', t, t); end loop;
-  -- financial tables: restricted, configurable via mentor_permissions (spec section 14)
-  foreach t in array array['income','budgets','founder_contributions','outstanding_payments','transaction_edits','expenses']
-  loop execute format('create policy mentor_read_%I on %I for select to authenticated using (is_mentor() and mentor_can(''finance''))', t, t); end loop;
-end $$;
-
--- Mentor comments on tasks/reports/documents/milestones/courses (spec: comments + improvement suggestions)
-create table mentor_comments (
-  id uuid primary key default gen_random_uuid(),
-  mentor_id uuid not null references mentors(id),
-  entity_type text not null check (entity_type in ('task','report','document','milestone','course','general')),
-  entity_id uuid not null,
-  body text not null,
-  created_at timestamptz not null default now()
-);
-alter table mentor_comments enable row level security;
-create policy mcomments_read on mentor_comments for select to authenticated using (is_founder() or is_mentor());
-create policy mcomments_insert on mentor_comments for insert to authenticated with check (mentor_id = my_mentor_id());
-create policy mcomments_delete on mentor_comments for delete to authenticated using (mentor_id = my_mentor_id());
-
--- Mentor reviews (documents, courses) with review status workflow (spec section 7)
-create table mentor_reviews (
-  id uuid primary key default gen_random_uuid(),
-  review_code text unique not null,
-  mentor_id uuid not null references mentors(id),
-  entity_type text not null check (entity_type in ('document','course','business_area')),
-  entity_id uuid not null,
-  status text not null default 'pending_review' check (status in ('pending_review','under_review','feedback_provided','revision_requested','reviewed')),
-  comments text,
-  suggestions text,
-  issues text,
-  reviewed_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(mentor_id, entity_type, entity_id)
-);
-alter table mentor_reviews enable row level security;
-create policy mreviews_read on mentor_reviews for select to authenticated using (is_founder() or is_mentor());
-create policy mreviews_insert on mentor_reviews for insert to authenticated with check (mentor_id = my_mentor_id());
-create policy mreviews_update on mentor_reviews for update to authenticated using (mentor_id = my_mentor_id()) with check (mentor_id = my_mentor_id());
-create policy mreviews_delete on mentor_reviews for delete to authenticated using (mentor_id = my_mentor_id());
-
--- Recommendations + founder responses (spec section 11)
-create table recommendations (
-  id uuid primary key default gen_random_uuid(),
-  rec_code text unique not null,
-  title text not null,
-  description text,
-  department text,
-  related_project text,
-  suggested_by uuid references mentors(id),
-  assigned_founder uuid references founders(id),
-  priority text not null default 'medium' check (priority in ('low','medium','high','urgent')),
-  supporting_docs text,
-  status text not null default 'suggested' check (status in ('suggested','under_discussion','accepted','in_progress','implemented','rejected')),
-  founder_response text,
-  converted_task_id uuid references tasks(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz
-);
-create table recommendation_responses (
-  id uuid primary key default gen_random_uuid(),
-  recommendation_id uuid not null references recommendations(id) on delete cascade,
-  founder_id uuid references founders(id),
-  mentor_id uuid references mentors(id),
-  body text not null,
-  status_change text,
-  created_at timestamptz not null default now()
-);
-alter table recommendations enable row level security;
-alter table recommendation_responses enable row level security;
-create policy recs_read on recommendations for select to authenticated using (is_founder() or is_mentor());
-create policy recs_insert on recommendations for insert to authenticated with check (is_mentor() and suggested_by = my_mentor_id());
-create policy recs_update on recommendations for update to authenticated using (is_founder() or (is_mentor() and suggested_by = my_mentor_id())) with check (is_founder() or (is_mentor() and suggested_by = my_mentor_id()));
-create policy recs_delete on recommendations for delete to authenticated using (is_mentor() and suggested_by = my_mentor_id());
-create policy rresponses_read on recommendation_responses for select to authenticated using (is_founder() or is_mentor());
-create policy rresponses_insert on recommendation_responses for insert to authenticated with check ((founder_id is not null and founder_id = my_founder_id()) or (mentor_id is not null and mentor_id = my_mentor_id()));
-create policy rresponses_delete on recommendation_responses for delete to authenticated using ((founder_id is not null and founder_id = my_founder_id()) or (mentor_id is not null and mentor_id = my_mentor_id()));
-
--- Roadmap milestones + update history (spec section 10)
-create table milestones (
-  id uuid primary key default gen_random_uuid(),
-  milestone_code text unique not null,
-  name text not null,
-  description text,
-  responsible_founder uuid references founders(id),
-  start_date date,
-  target_date date,
-  progress_pct int not null default 0 check (progress_pct between 0 and 100),
-  status text not null default 'not_started' check (status in ('not_started','in_progress','completed','delayed','on_hold')),
-  milestone_order int not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create table milestone_updates (
-  id uuid primary key default gen_random_uuid(),
-  milestone_id uuid not null references milestones(id) on delete cascade,
-  founder_id uuid references founders(id),
-  mentor_id uuid references mentors(id),
-  progress_from int, progress_to int,
-  status_from text, status_to text,
-  note text,
-  created_at timestamptz not null default now()
-);
-alter table milestones enable row level security;
-alter table milestone_updates enable row level security;
-create policy milestones_read on milestones for select to authenticated using (is_founder() or is_mentor());
-create policy milestones_write on milestones for all to authenticated using (is_founder() or is_mentor()) with check (is_founder() or is_mentor());
-create policy mupdates_read on milestone_updates for select to authenticated using (is_founder() or is_mentor());
-create policy mupdates_insert on milestone_updates for insert to authenticated with check ((founder_id is not null and founder_id = my_founder_id()) or (mentor_id is not null and mentor_id = my_mentor_id()));
-
-insert into milestones (milestone_code, name, milestone_order) values
-  ('MST-0001','Business Foundation',1),('MST-0002','Founder Structure',2),('MST-0003','Legal Documentation',3),
-  ('MST-0004','Business Planning',4),('MST-0005','Market Research',5),('MST-0006','Academic Planning',6),
-  ('MST-0007','Course Development',7),('MST-0008','Branding',8),('MST-0009','Marketing Preparation',9),
-  ('MST-0010','Operations Setup',10),('MST-0011','Pilot Batch Preparation',11),('MST-0012','Pilot Batch Launch',12);
-
--- Mentoring meetings + notes/action items (spec section 13)
-create table mentoring_meetings (
-  id uuid primary key default gen_random_uuid(),
-  meeting_code text unique not null,
-  title text not null,
-  scheduled_at timestamptz not null,
-  mode text not null default 'online' check (mode in ('online','in_person','phone')),
-  agenda text,
-  participants uuid[] not null default '{}',
-  discussion_notes text,
-  next_review_date date,
-  status text not null default 'scheduled' check (status in ('scheduled','completed','cancelled')),
-  created_by_mentor uuid references mentors(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz
-);
-create table mentoring_meeting_notes (
-  id uuid primary key default gen_random_uuid(),
-  meeting_id uuid not null references mentoring_meetings(id) on delete cascade,
-  mentor_id uuid references mentors(id),
-  founder_id uuid references founders(id),
-  note_type text not null default 'note' check (note_type in ('note','observation','decision','action_item')),
-  body text not null,
-  assigned_to uuid references founders(id),
-  deadline date,
-  status text not null default 'pending' check (status in ('pending','done')),
-  created_at timestamptz not null default now()
-);
-alter table mentoring_meetings enable row level security;
-alter table mentoring_meeting_notes enable row level security;
-create policy mmeetings_read on mentoring_meetings for select to authenticated using (is_founder() or is_mentor());
-create policy mmeetings_write on mentoring_meetings for all to authenticated using (is_founder() or is_mentor()) with check (is_founder() or is_mentor());
-create policy mnotes_read on mentoring_meeting_notes for select to authenticated using (is_founder() or is_mentor());
-create policy mnotes_insert on mentoring_meeting_notes for insert to authenticated with check ((mentor_id is not null and mentor_id = my_mentor_id()) or (founder_id is not null and founder_id = my_founder_id()));
-create policy mnotes_update on mentoring_meeting_notes for update to authenticated using (is_founder() or is_mentor()) with check (is_founder() or is_mentor());
-create policy mnotes_delete on mentoring_meeting_notes for delete to authenticated using ((mentor_id is not null and mentor_id = my_mentor_id()) or (founder_id is not null and founder_id = my_founder_id()));
-
--- Academy progress areas (spec sections 3A + 8): mentor gives review notes, founders own execution
-create table academy_progress (
-  id uuid primary key default gen_random_uuid(),
-  area_key text unique not null,
-  area_group text not null check (area_group in ('dashboard','business')),
-  label text not null,
-  pct int not null default 0 check (pct between 0 and 100),
-  mentor_note text,
-  founder_note text,
-  area_order int not null default 0,
-  updated_at timestamptz not null default now()
-);
-alter table academy_progress enable row level security;
-create policy aprogress_read on academy_progress for select to authenticated using (is_founder() or is_mentor());
-create policy aprogress_write on academy_progress for all to authenticated using (is_founder() or is_mentor()) with check (is_founder() or is_mentor());
-
-insert into academy_progress (area_key, area_group, label, area_order) values
-  ('business_development','dashboard','Business Development',1),('marketing','dashboard','Marketing',2),
-  ('operations','dashboard','Operations',3),('technical_development','dashboard','Technical Development',4),
-  ('academic_development','dashboard','Academic Development',5),('course_development','dashboard','Course Development',6),
-  ('documentation','dashboard','Documentation',7),('pilot_batch','dashboard','Pilot Batch Preparation',8),
-  ('business_model','business','Business Model Readiness',1),('market_research','business','Market Research Progress',2),
-  ('target_audience','business','Target Audience Definition',3),('competitor_analysis','business','Competitor Analysis',4),
-  ('pricing_strategy','business','Pricing Strategy',5),('revenue_model','business','Revenue Model',6),
-  ('marketing_strategy','business','Marketing Strategy',7),('operational_readiness','business','Operational Readiness',8),
-  ('business_documentation','business','Business Documentation',9),('launch_preparation','business','Launch Preparation',10);
-
--- Mentor notifications (own table: notifications.founder_id references founders)
-create table mentor_notifications (
-  id uuid primary key default gen_random_uuid(),
-  mentor_id uuid not null references mentors(id) on delete cascade,
-  type text not null,
-  title text not null,
-  body text,
-  link text,
-  read boolean not null default false,
-  created_at timestamptz not null default now()
-);
-create index mnotifications_recipient_idx on mentor_notifications (mentor_id, read, created_at desc);
-alter table mentor_notifications enable row level security;
-create policy mnotifications_read_own on mentor_notifications for select to authenticated using (mentor_id = my_mentor_id());
-create policy mnotifications_update_own on mentor_notifications for update to authenticated using (mentor_id = my_mentor_id()) with check (mentor_id = my_mentor_id());
-create policy mnotifications_delete_own on mentor_notifications for delete to authenticated using (mentor_id = my_mentor_id());
-
-create or replace function notify_all_mentors(p_type text, p_title text, p_body text default null, p_link text default null)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  insert into mentor_notifications (mentor_id, type, title, body, link)
-  select id, p_type, p_title, p_body, p_link from mentors where is_active;
-end $$;
-
--- Mentor activity audit log (spec sections 18-19)
-create table mentor_activity_log (
-  id uuid primary key default gen_random_uuid(),
-  mentor_id uuid references mentors(id),
-  action text not null,
-  entity_type text,
-  entity_id uuid,
-  summary text,
-  created_at timestamptz not null default now()
-);
-alter table mentor_activity_log enable row level security;
-create policy mactivity_read on mentor_activity_log for select to authenticated using (is_founder() or mentor_id = my_mentor_id());
-create policy mactivity_insert on mentor_activity_log for insert to authenticated with check (mentor_id = my_mentor_id());
-
--- Mentor-facing notification triggers
-create or replace function trg_mnotify_document() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  perform notify_all_mentors('document_review', 'Document submitted for review: ' || new.title, null, '/documents');
-  return new;
-end $$;
-drop trigger if exists trg_mnotify_document on documents;
-create trigger trg_mnotify_document after insert on documents for each row execute function trg_mnotify_document();
-
-create or replace function trg_mnotify_report() returns trigger language plpgsql security definer set search_path = public as $$
-declare v_name text;
-begin
-  select full_name into v_name from founders where id = new.founder_id;
-  perform notify_all_mentors('weekly_report', coalesce(v_name,'A founder') || ' submitted a weekly report', 'Week of ' || to_char(new.week_start, 'DD Mon YYYY'), '/reports');
-  return new;
-end $$;
-drop trigger if exists trg_mnotify_report on weekly_reports;
-create trigger trg_mnotify_report after insert on weekly_reports for each row execute function trg_mnotify_report();
-
-create or replace function trg_mnotify_task_update() returns trigger language plpgsql security definer set search_path = public as $$
-declare v_title text;
-begin
-  select title into v_title from tasks where id = new.task_id;
-  perform notify_all_mentors('task_update', 'Task progress: ' || coalesce(v_title,''), coalesce(new.note, new.status_to), '/tasks');
-  return new;
-end $$;
-drop trigger if exists trg_mnotify_task_update on task_updates;
-create trigger trg_mnotify_task_update after insert on task_updates for each row execute function trg_mnotify_task_update();
-
-create or replace function trg_mnotify_milestone() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if tg_op = 'INSERT' then
-    perform notify_all_mentors('milestone', 'New milestone: ' || new.name, null, '/roadmap');
-  elsif new.status = 'delayed' and old.status is distinct from 'delayed' then
-    perform notify_all_mentors('milestone_delayed', 'Milestone delayed: ' || new.name, null, '/roadmap');
-  end if;
-  return new;
-end $$;
-drop trigger if exists trg_mnotify_milestone on milestones;
-create trigger trg_mnotify_milestone after insert or update on milestones for each row execute function trg_mnotify_milestone();
-
--- Founder-side notifications for mentor actions
-create or replace function trg_notify_recommendation() returns trigger language plpgsql security definer set search_path = public as $$
-declare v_targets uuid[];
-begin
-  if new.assigned_founder is not null then v_targets := array[new.assigned_founder];
-  else select coalesce(array_agg(id),'{}') into v_targets from founders where is_active; end if;
-  perform notify_founders(v_targets, 'recommendation', 'New mentor recommendation: ' || new.title, null, '/recommendations');
-  return new;
-end $$;
-drop trigger if exists trg_notify_recommendation on recommendations;
-create trigger trg_notify_recommendation after insert on recommendations for each row execute function trg_notify_recommendation();
-
-create or replace function trg_mnotify_rec_response() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if new.founder_id is not null then
-    perform notify_all_mentors('recommendation_response', 'Founder responded to a recommendation', left(new.body, 120), '/recommendations');
-  end if;
-  return new;
-end $$;
-drop trigger if exists trg_mnotify_rec_response on recommendation_responses;
-create trigger trg_mnotify_rec_response after insert on recommendation_responses for each row execute function trg_mnotify_rec_response();
-
-create or replace function trg_notify_mentor_comment() returns trigger language plpgsql security definer set search_path = public as $$
-declare v_creator uuid; v_assignee uuid; v_targets uuid[];
-begin
-  if new.entity_type = 'task' then
-    select created_by, assigned_to into v_creator, v_assignee from tasks where id = new.entity_id;
-    v_targets := array(select distinct x from (values (v_creator),(v_assignee)) v(x) where x is not null);
-    perform notify_founders(v_targets, 'mentor_comment', 'Mentor commented on a task', left(new.body, 120), '/tasks');
-  end if;
-  return new;
-end $$;
-drop trigger if exists trg_notify_mentor_comment on mentor_comments;
-create trigger trg_notify_mentor_comment after insert on mentor_comments for each row execute function trg_notify_mentor_comment();
-
-create or replace function trg_notify_mentoring_meeting() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  perform notify_founders(new.participants, 'mentoring_meeting', 'Mentoring meeting scheduled: ' || new.title, to_char(new.scheduled_at, 'DD Mon YYYY HH24:MI'), '/meetings');
-  return new;
-end $$;
-drop trigger if exists trg_notify_mentoring_meeting on mentoring_meetings;
-create trigger trg_notify_mentoring_meeting after insert on mentoring_meetings for each row execute function trg_notify_mentoring_meeting();
-
--- updated_at touch triggers
-do $$ declare t text; begin
-  foreach t in array array['mentors','mentor_reviews','recommendations','milestones','mentoring_meetings','academy_progress']
-  loop execute format('create trigger trg_touch_%I before update on %I for each row execute function touch_updated_at()', t, t); end loop;
-end $$;
-
--- =====================================================================
 -- MIGRATION 10: Admin panel (admin_users, is_admin(), admin_all policies,
 -- owner/last-admin protection triggers)
 -- =====================================================================
@@ -1318,3 +959,91 @@ begin
 end $$;
 revoke all on function admin_delete_user(text) from public, anon;
 grant execute on function admin_delete_user(text) to authenticated;
+-- migration-12: remove the mentor sector entirely (user request, Nov 10 2026)
+-- Backup before removal: Drive file "teqx-mentor-sector-backup-2026-11-10.txt"
+-- (Academy folder) - schema + all data + function definitions.
+
+-- founder-side triggers that notified mentors
+drop trigger if exists trg_mnotify_document on documents;
+drop trigger if exists trg_mnotify_report on weekly_reports;
+drop trigger if exists trg_mnotify_task_update on task_updates;
+
+-- mentor-owned tables (policies and triggers on them go with the tables)
+drop table if exists recommendation_responses, recommendations, milestone_updates,
+  milestones, academy_progress, mentoring_meeting_notes, mentoring_meetings,
+  mentor_reviews, mentor_comments, mentor_notifications, mentor_activity_log,
+  mentor_permissions, mentors;
+
+-- mentor functions; CASCADE drops dependent mentor_read_* policies and triggers
+do $$ declare r record;
+begin
+  for r in select p.oid::regprocedure::text as sig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and (p.proname ilike '%mentor%'
+           or p.proname in ('trg_mnotify_document','trg_mnotify_report','trg_mnotify_task_update',
+                            'trg_notify_recommendation','trg_mnotify_milestone'))
+  loop
+    execute 'drop function if exists ' || r.sig || ' cascade';
+  end loop;
+end $$;
+-- migration-13: drop mentor link branches from the user-account functions
+-- (mentors table no longer exists after migration-12)
+
+create or replace function admin_create_user(p_username text, p_password text, p_full_name text, p_link_type text default null, p_link_id uuid default null)
+returns uuid language plpgsql security definer set search_path = public, auth, extensions as $$
+declare v_uid uuid := gen_random_uuid(); v_email text;
+begin
+  if not is_admin() then raise exception 'Admin only'; end if;
+  p_username := lower(trim(p_username));
+  if p_username !~ '^[a-z0-9_.-]{3,30}$' then raise exception 'Username must be 3-30 characters: a-z, 0-9, _, ., -'; end if;
+  if length(coalesce(p_password,'')) < 8 then raise exception 'Password must be at least 8 characters'; end if;
+  if exists(select 1 from usernames where username = p_username) then raise exception 'Username already taken'; end if;
+  v_email := p_username || '@users.teqxacademy.in';
+  if exists(select 1 from auth.users where email = v_email) then raise exception 'Username already taken'; end if;
+  insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+                          raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+                          confirmation_token, recovery_token, email_change_token_new, email_change,
+                          email_change_token_current, reauthentication_token)
+  values ('00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated', v_email,
+          crypt(p_password, gen_salt('bf')), now(),
+          '{"provider":"email","providers":["email"]}',
+          jsonb_build_object('full_name', coalesce(nullif(p_full_name,''), p_username)), now(), now(),
+          '', '', '', '', '', '');
+  insert into auth.identities (id, user_id, provider, provider_id, identity_data, last_sign_in_at, created_at, updated_at)
+  values (gen_random_uuid(), v_uid, 'email', v_uid::text,
+          jsonb_build_object('sub', v_uid::text, 'email', v_email), now(), now(), now());
+  insert into usernames (username, auth_user_id) values (p_username, v_uid);
+  if p_link_type = 'founder' then
+    if exists(select 1 from founders where id = p_link_id and auth_user_id is not null) then
+      raise exception 'That founder already has a linked login'; end if;
+    update founders set auth_user_id = v_uid where id = p_link_id;
+  elsif p_link_type = 'admin' then
+    insert into admin_users (auth_user_id, email, full_name)
+    values (v_uid, v_email, coalesce(nullif(p_full_name,''),'Teqx Admin'));
+  end if;
+  return v_uid;
+end $$;
+revoke all on function admin_create_user(text,text,text,text,uuid) from public, anon;
+grant execute on function admin_create_user(text,text,text,text,uuid) to authenticated;
+
+create or replace function admin_delete_user(p_username text)
+returns void language plpgsql security definer set search_path = public, auth, extensions as $$
+declare v_uid uuid;
+begin
+  if not is_admin() then raise exception 'Admin only'; end if;
+  select auth_user_id into v_uid from usernames where username = lower(trim(p_username));
+  if v_uid is null then raise exception 'Username not found'; end if;
+  if v_uid = auth.uid() then raise exception 'You cannot delete the account you are signed in with'; end if;
+  if exists(select 1 from founders where auth_user_id = v_uid and founder_code = 'FDR-001') then
+    raise exception 'The owner (FDR-001) login is protected and cannot be deleted'; end if;
+  update founders set auth_user_id = null where auth_user_id = v_uid;
+  delete from admin_users where auth_user_id = v_uid;
+  delete from usernames where auth_user_id = v_uid;
+  delete from auth.users where id = v_uid;
+end $$;
+revoke all on function admin_delete_user(text) from public, anon;
+grant execute on function admin_delete_user(text) to authenticated;
+
+-- cleanup: orphan trigger function left over from the mentor sector
+drop function if exists public.trg_mnotify_rec_response() cascade;

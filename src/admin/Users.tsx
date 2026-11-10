@@ -9,7 +9,6 @@ type Row = {
 export function AdminUsers() {
     const [rows, setRows] = useState<Row[]>([]);
     const [founders, setFounders] = useState<any[]>([]);
-    const [mentors, setMentors] = useState<any[]>([]);
     const [err, setErr] = useState('');
     const [ok, setOk] = useState('');
     // create form
@@ -29,18 +28,15 @@ export function AdminUsers() {
     const load = async () => {
         setErr('');
         try {
-            const [uns, fs, ms, as] = await Promise.all([
+            const [uns, fs, as] = await Promise.all([
                 dbSelect<any>('usernames', { order: 'username' }),
                 dbSelect<any>('founders', { select: 'id,full_name,founder_code,auth_user_id' }),
-                dbSelect<any>('mentors', { select: 'id,full_name,mentor_code,auth_user_id', is: { deleted_at: 'null' } }),
                 dbSelect<any>('admin_users', { select: 'id,full_name,email,auth_user_id' }),
             ]);
-            setFounders(fs); setMentors(ms);
+            setFounders(fs);
             const linkOf = (uid: string) => {
                 const f = fs.find((x: any) => x.auth_user_id === uid);
                 if (f) return `Founder - ${f.full_name} (${f.founder_code})`;
-                const m = ms.find((x: any) => x.auth_user_id === uid);
-                if (m) return `Mentor - ${m.full_name} (${m.mentor_code})`;
                 const a = as.find((x: any) => x.auth_user_id === uid);
                 if (a) return `Admin - ${a.full_name}`;
                 return 'No link (signs in but has no workspace role)';
@@ -50,7 +46,7 @@ export function AdminUsers() {
     };
     useEffect(() => { load(); }, []);
 
-    // link picker value: 'none' | 'admin' | 'founder:<id>' | 'mentor:<id>'
+    // link picker value: 'none' | 'admin' | 'founder:<id>'
     const linkVal = linkType === 'none' || linkType === 'admin' ? linkType : `${linkType}:${linkId}`;
     const pickLink = (v: string) => {
         if (v === 'none' || v === 'admin') { setLinkType(v); setLinkId(''); return; }
@@ -62,8 +58,8 @@ export function AdminUsers() {
         setBusy(true); setErr(''); setOk('');
         try {
             const lt = linkType === 'none' ? null : linkType;
-            const lid = (linkType === 'founder' || linkType === 'mentor') ? (linkId || null) : null;
-            if ((linkType === 'founder' || linkType === 'mentor') && !lid) throw new Error(`Pick which ${linkType} record this login opens`);
+            const lid = linkType === 'founder' ? (linkId || null) : null;
+            if (linkType === 'founder' && !lid) throw new Error('Pick which founder record this login opens');
             await rpcCall('admin_create_user', { p_username: uname, p_password: pw, p_full_name: fname, p_link_type: lt, p_link_id: lid });
             setOk(`Login created: ${uname.trim().toLowerCase()}`);
             setUname(''); setFname(''); setPw(''); setLinkType('none'); setLinkId('');
@@ -116,11 +112,8 @@ export function AdminUsers() {
                         <optgroup label="Founders without a login">
                             {founders.filter(f => !f.auth_user_id).map(f => <option key={f.id} value={`founder:${f.id}`}>{f.full_name} ({f.founder_code})</option>)}
                         </optgroup>
-                        <optgroup label="Mentors without a login">
-                            {mentors.filter(m => !m.auth_user_id).map(m => <option key={m.id} value={`mentor:${m.id}`}>{m.full_name} ({m.mentor_code})</option>)}
-                        </optgroup>
                     </select>
-                    <div className="mut" style={{ fontSize: 11, marginTop: 4 }}>The role comes from your pick: founder, mentor, or admin.</div>
+                    <div className="mut" style={{ fontSize: 11, marginTop: 4 }}>The role comes from your pick: founder or admin.</div>
                 </div>
             </div>
             <button className="btn" style={{ marginTop: 12 }} disabled={busy || uname.trim().length < 3 || pw.length < 8} onClick={create}>{busy ? 'Creating...' : 'Create login'}</button>
@@ -162,7 +155,7 @@ export function AdminUsers() {
         {delRow && <div className="modal-bg" onClick={() => setDelRow(null)}>
             <div className="card modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
                 <h3>Delete login: {delRow.username}?</h3>
-                <p className="mut" style={{ margin: '10px 0 16px' }}>The login is removed permanently. The linked founder/mentor record stays - it just loses its sign-in.</p>
+                <p className="mut" style={{ margin: '10px 0 16px' }}>The login is removed permanently. The linked founder record stays - it just loses its sign-in.</p>
                 <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn danger" disabled={busy} onClick={doDelete}>{busy ? 'Deleting...' : 'Delete login'}</button>
                     <button className="btn ghost" onClick={() => setDelRow(null)}>Cancel</button>

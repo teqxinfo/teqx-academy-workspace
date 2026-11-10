@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
 import { getSession, signOut, store } from './lib/sb';
-import { loadFounders, myFounder, myMentor, myAdmin, initials, Founder, Mentor, AdminUser } from './lib/data';
-import { MentorShell } from './mentor/MentorShell';
+import { loadFounders, myFounder, myAdmin, initials, Founder, AdminUser } from './lib/data';
 import { AdminShell } from './admin/AdminShell';
 import { Login } from './views/Login';
 import logoUrl from './assets/logo.png';
@@ -19,9 +18,6 @@ import { Founders } from './views/Founders';
 import { KnowledgeHub } from './views/KnowledgeHub';
 import { Notifications } from './views/Notifications';
 import { Settings } from './views/Settings';
-import { Recommendations } from './views/Recommendations';
-import { Roadmap } from './views/Roadmap';
-import { Mentoring } from './views/Mentoring';
 
 type Ctx = { me: Founder; founders: Founder[]; refresh: () => Promise<void>; dark: boolean; toggleTheme: () => void };
 export const AppCtx = createContext<Ctx>(null as any);
@@ -31,7 +27,7 @@ const NAV = [
     ['/', 'Dashboard'], ['/founders', 'Founders & Roles'], ['/study', 'Study Tracker'],
     ['/tasks', 'Task Management'], ['/documents', 'Document Tracker'], ['/courses', 'Course Development'],
     ['/marketing', 'Marketing Progress'], ['/expenses', 'Financial Management'], ['/reports', 'Weekly Reports'],
-    ['/meetings', 'Founder Meetings'], ['/recommendations', 'Recommendations'], ['/roadmap', 'Roadmap'], ['/mentoring', 'Mentoring'],
+    ['/meetings', 'Founder Meetings'],
     ['/knowledge', 'Knowledge Hub'], ['/notifications', 'Notifications'], ['/settings', 'Settings'],
 ];
 
@@ -69,9 +65,6 @@ function Shell({ me, founders, refresh, dark, toggleTheme }: any) {
                     <Route path="/knowledge" element={<KnowledgeHub />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/reports" element={<Reports />} />
-                    <Route path="/recommendations" element={<Recommendations />} />
-                    <Route path="/roadmap" element={<Roadmap />} />
-                    <Route path="/mentoring" element={<Mentoring />} />
                     <Route path="/expenses" element={<Finance />} />
                     <Route path="/settings" element={<Settings />} />
                 </Routes>
@@ -83,7 +76,6 @@ function Shell({ me, founders, refresh, dark, toggleTheme }: any) {
 export function App() {
     const [state, setState] = useState<'loading' | 'login' | 'ready' | 'unlinked'>('loading');
     const [me, setMe] = useState<Founder | null>(null);
-    const [mentor, setMentor] = useState<Mentor | null>(null);
     const [admin, setAdmin] = useState<AdminUser | null>(null);
     const [founders, setFounders] = useState<Founder[]>([]);
     const [dark, setDark] = useState(() => store.get('teqx_theme') !== 'light');
@@ -94,12 +86,10 @@ export function App() {
         const f = await loadFounders();
         setFounders(f);
         const m = await myFounder();
-        if (m) { setMe(m); setMentor(null); setAdmin(null); setState('ready'); return; }
-        const mt = await myMentor();
-        if (mt && mt.is_active) { setMentor(mt); setMe(null); setAdmin(null); setState('ready'); return; }
+        if (m) { setMe(m); setAdmin(null); setState('ready'); return; }
         const ad = await myAdmin();
-        if (ad) { setAdmin(ad); setMe(null); setMentor(null); setState('ready'); return; }
-        setMe(null); setMentor(null); setAdmin(null); setState('unlinked');
+        if (ad) { setAdmin(ad); setMe(null); setState('ready'); return; }
+        setMe(null); setAdmin(null); setState('unlinked');
     };
 
     useEffect(() => {
@@ -113,10 +103,9 @@ export function App() {
     if (state === 'login') return <Login onDone={() => refresh()} />;
     if (state === 'unlinked') return <div className="login-wrap"><div className="login-card">
         <div className="brandbox"><img src={logoUrl} alt="Teqx Academy" className="brandimg" /></div>
-        <p className="mut small" style={{ marginTop: 12 }}>This login is not linked to a founder account yet. Ask Afvan to link your email in Settings.</p>
+        <p className="mut small" style={{ marginTop: 12 }}>This login is not linked to a founder or admin account yet. Ask the admin to link it under User Accounts in the Admin Panel.</p>
         <button className="btn ghost" style={{ marginTop: 16 }} onClick={async () => { await signOut(); location.reload(); }}>Sign out</button>
     </div></div>;
-    if (mentor) return <MentorShell me={mentor} founders={founders} refresh={refresh} dark={dark} toggleTheme={() => setDark(!dark)} />;
     if (admin) return <AdminShell me={admin} dark={dark} toggleTheme={() => setDark(!dark)} />;
     return <Shell me={me} founders={founders} refresh={refresh} dark={dark} toggleTheme={() => setDark(!dark)} />;
 }
