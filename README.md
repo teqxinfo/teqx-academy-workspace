@@ -40,3 +40,10 @@ The mentor sector was fully removed on user request: no mentor role, portal, log
 - Safety rails enforced in the database: owner founder record (FDR-001) cannot be deleted, an admin cannot delete their own login, and the last admin can never be removed.
 - DB: migration-10-admin.sql (admin_users, is_admin(), admin_all RLS policies on all tables, protection triggers), migration-11-usernames.sql (usernames, resolve_username, admin_create_user / admin_reset_password / admin_delete_user; mentor link branch dropped by migration-13).
 - The first admin login: username "admin" (account teqxinfo@gmail.com internally). Its password is set privately and stored in the credentials backup doc.
+
+## Automatic daily database backup (added Nov 10, 2026)
+- Every day (~3:25 AM IST) a full export of all database tables lands in the private Drive folder "Academy DB Backups" as teqx-backup-YYYY-MM-DD.json.
+- Retention: files older than 3 months are automatically deleted (moved to Drive trash, which itself purges after ~30 days).
+- Manual run anywhere with Python: SUPABASE_DB_PASSWORD='...' python3 scripts/backup.py (see scripts/backup.py; the password is in the credentials doc).
+- Storage note: database rows are fully exported; Supabase Storage file contents are not (only object metadata - bucket currently empty).
+- The app also has a manual export button: Settings > Data & backup > Download full backup.
